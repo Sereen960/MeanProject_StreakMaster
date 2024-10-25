@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="habitTrackerApp">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Habit Tracker</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/3.10.2/fullcalendar.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="addtasks.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.8.2/angular.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/3.10.2/fullcalendar.min.js"></script>
+</head>
+<body ng-controller="MainController">
+
+    <section id="habits">
+        <h2>Track Your Habits</h2>
+        <div class="tracker-grid">
+            <div class="habit" ng-repeat="habit in habits track by $index" ng-style="{'border-color': getCategoryColor(habit.category)}">
+                <h3>{{ habit.name }} ({{ habit.category }})</h3>
+                <p>{{ habit.description }}</p>
+                <p><b>Reminder:</b> {{ habit.reminderTime | date: 'shortTime' }}</p>
+                <p><b>Streak:</b> <span ng-class="{'streak-up': habit.streak > 0, 'streak-down': habit.streak === 0}">{{ habit.streak }} days</span></p>
+                <p><b>Notes:</b> {{ habit.notes }}</p>
+                <p><b>Next Update:</b> {{ habit.nextUpdate | date: 'dd-MM-yyyy' }}</p>
+                <div class="progress">
+                    <div class="bar" ng-style="{width: habit.progress + '%'}"></div>
+                </div>
+                <button ng-click="completeHabit(habit)">Mark as Complete</button>
+                <button ng-click="deleteHabit($index)">Delete</button>
+            </div>
+        </div>
+        
+        <div class="add-habit-container">
+            <h3>Add New Habit</h3>
+            <form ng-submit="addHabit()">
+                <input type="text" ng-model="newHabit.name" placeholder="Habit Name" required />
+                <input type="text" ng-model="newHabit.description" placeholder="Habit Description" required />
+                <input type="time" ng-model="newHabit.reminderTime" placeholder="Set Reminder" required />
+                <input type="date" ng-model="newHabit.startDate" placeholder="Start Date" required />
+                <select ng-model="newHabit.frequency" required>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                </select>
+                <select ng-model="newHabit.category" required>
+                    <option value="">Select Category</option>
+                    <option value="Health">Health</option>
+                    <option value="Learning">Learning</option>
+                    <option value="Fitness">Fitness</option>
+                    <option value="Other">Other</option>
+                </select>
+                <textarea ng-model="newHabit.notes" placeholder="Add Notes"></textarea>
+                <button type="submit">Add Habit</button>
+            </form>
+            <div class="habit-success-message" ng-show="habitAdded">Habit added successfully!</div>
+        </div>
+    </section>
+
+    <section id="calendar">
+        <h2>Your Habit Calendar</h2>
+        <div id="habitCalendar"></div>
+    </section>
+
+    <div class="notification" ng-show="notification">{{ notification }}</div>
+
+    <script>
+        angular.module('habitTrackerApp', [])
+            .controller('MainController', ['$scope', function($scope) {
+                $scope.habits = [];
+                $scope.newHabit = {};
+                $scope.notification = '';
+                $scope.habitAdded = false;
+
+                const loadHabits = function() {
+                    const storedHabits = JSON.parse(localStorage.getItem('habits'));
+                    if (storedHabits) {
+                        $scope.habits = storedHabits;
+                        $scope.updateCalendar();
+                        $scope.updateProgress();
+                    }
+                };
+
+                $scope.addHabit = function() {
+                    const habit = angular.copy($scope.newHabit);
+                    habit.progress = calculateProgress(habit.frequency, habit.startDate); // Calculate initial progress
+                    habit.streak = 0; // Initial streak
+                    habit.nextUpdate = calculateNextUpdate(habit.startDate, habit.frequency);
+                    $scope.habits.push(habit);
+                    $scope.saveHabits();
+                    $scope.updateCalendar();
+                    $scope.newHabit = {}; // Reset newHabit
+                    $scope.notification = 'Habit added successfully!';
+                    $scope.habitAdded = true; // Show success message
+                    setTimeout(() => $scope.habitAdded = false, 3000); // Hide after 3 seconds
+                };
+
+                const calculateNextUpdate = function(startDate, frequency) {
+                    let nextUpdate = moment(startDate);
+                    switch (frequency) {
+                        case 'daily':
+                            nextUpdate.add(1, 'day');
+                            break;
+                        case 'weekly':
+                            nextUpdate.add(1, 'week');
+                            break;
+                        case 'monthly':
+                            nextUpdate.add(1, 'month');
+                            break;
+                        case 'yearly':
+                            nextUpdate.add(1, 'year');
+                            break;
+                    }
+                    return nextUpdate.format('YYYY-MM-DD');
+                };
+
+                const calculateProgress = function(frequency, startDate) {
+                    let now = moment();
+                    let start = moment(startDate);
+                    let progress = 0;
+
+                    switch (frequency) {
+                        case 'daily':
+                            progress = now.diff(start, 'days') % 1 * 100;
+                            break;
+                        case 'weekly':
+                            progress = now.diff(start, 'weeks') % 1 * 100;
+                            break;
+                        case 'monthly':
+                            progress = now.diff(start, 'months') % 1 * 100;
+                            break;
+                        case 'yearly':
+                            progress = now.diff(start, 'years') % 1 * 100;
+                            break;
+                    }
+
+                    return progress;
+                };
+
+                $scope.completeHabit = function(habit) {
+                    habit.progress = 100; // Mark as complete
+                    habit.streak += 1; // Increment streak
+                    habit.nextUpdate = calculateNextUpdate(habit.nextUpdate, habit.frequency); // Update next reminder
+                    habit.progress = calculateProgress(habit.frequency, habit.startDate); // Recalculate progress
+                    $scope.saveHabits();
+                    $scope.updateCalendar();
+                    $scope.notification = 'Congratulations! Habit marked as complete.';
+                    setTimeout(() => $scope.notification = '', 3000); // Hide after 3 seconds
+                };
+
+                $scope.deleteHabit = function(index) {
+                    $scope.habits.splice(index, 1);
+                    $scope.saveHabits();
+                    $scope.updateCalendar();
+                    $scope.notification = 'Habit deleted successfully!';
+                    setTimeout(() => $scope.notification = '', 3000); // Hide after 3 seconds
+                };
+
+                $scope.updateCalendar = function() {
+                    $('#habitCalendar').fullCalendar('removeEvents'); // Clear existing events
+                    $scope.habits.forEach(function(habit) {
+                        $('#habitCalendar').fullCalendar('renderEvent', {
+                            title: habit.name,
+                            start: habit.startDate,
+                            allDay: true
+                        }, true);
+                    });
+                };
+
+                $scope.saveHabits = function() {
+                    localStorage.setItem('habits', JSON.stringify($scope.habits));
+                };
+
+                $scope.getCategoryColor = function(category) {
+                    switch (category) {
+                        case 'Health':
+                            return '#4CAF50'; // Green
+                        case 'Learning':
+                            return '#2196F3'; // Blue
+                        case 'Fitness':
+                            return '#FF9800'; // Orange
+                        case 'Other':
+                            return '#9C27B0'; // Purple
+                        default:
+                            return '#ccc'; // Default color
+                    }
+                };
+
+                $(document).ready(function() {
+                    loadHabits(); // Load habits on page load
+                });
+
+                // Initialize the FullCalendar
+                $('#habitCalendar').fullCalendar({
+                    events: [],
+                    height: 400,
+                    header: {
+                        left: 'prev,next today',
+                        center: 'title',
+                        right: 'month,agendaWeek,agendaDay'
+                    }
+                });
+            }]);
+    </script>
+
+</body>
+</html>
